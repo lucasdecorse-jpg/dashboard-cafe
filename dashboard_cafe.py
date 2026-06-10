@@ -1,9 +1,8 @@
 import pandas as pd
 import numpy as np
 import streamlit as st
-import matplotlib.pyplot as plt
-import matplotlib
-matplotlib.use("Agg")
+import plotly.express as px
+import plotly.graph_objects as go
 
 # ─── CONFIG ───────────────────────────────────────────────────────────────────
 st.set_page_config(
@@ -17,39 +16,29 @@ st.set_page_config(
 def load_data():
     df = pd.read_csv("cafe_sales_clean.csv", sep=",", encoding="utf-8")
 
-    # Renommer les colonnes
     df.columns = df.columns.str.strip().str.lower().str.replace(" ", "_")
-
-    # Remplacer ERROR et UNKNOWN par NaN
     df.replace(["ERROR", "UNKNOWN"], np.nan, inplace=True)
 
-    # Convertir en vrais chiffres
     df["total_spent"]    = pd.to_numeric(df["total_spent"], errors="coerce")
     df["quantity"]       = pd.to_numeric(df["quantity"], errors="coerce")
     df["price_per_unit"] = pd.to_numeric(df["price_per_unit"], errors="coerce")
 
-    # Reconstruire total_spent
     mask_ts = df["total_spent"].isna() & df["quantity"].notna() & df["price_per_unit"].notna()
     df.loc[mask_ts, "total_spent"] = df.loc[mask_ts, "quantity"] * df.loc[mask_ts, "price_per_unit"]
 
-    # Reconstruire quantity
     mask_q = df["quantity"].isna() & df["total_spent"].notna() & df["price_per_unit"].notna()
     df.loc[mask_q, "quantity"] = df.loc[mask_q, "total_spent"] / df.loc[mask_q, "price_per_unit"]
 
-    # Reconstruire price_per_unit
     mask_p = df["price_per_unit"].isna() & df["total_spent"].notna() & df["quantity"].notna()
     df.loc[mask_p, "price_per_unit"] = df.loc[mask_p, "total_spent"] / df.loc[mask_p, "quantity"]
 
-    # Reconstruire items via prix fixe
     prix_to_item = {1.0: "Cookie", 1.5: "Tea", 2.0: "Coffee", 5.0: "Salad"}
     mask_item = df["item"].isna() & df["price_per_unit"].isin(prix_to_item.keys())
     df.loc[mask_item, "item"] = df.loc[mask_item, "price_per_unit"].map(prix_to_item)
 
-    # Colonnes texte
     df["location"]       = df["location"].fillna("Non renseigné")
     df["payment_method"] = df["payment_method"].fillna("Non renseigné")
 
-    # Dates
     df["transaction_date"] = pd.to_datetime(df["transaction_date"], errors="coerce")
     df["mois"]             = df["transaction_date"].dt.month
     df["mois_nom"]         = df["transaction_date"].dt.strftime("%B")
@@ -66,31 +55,15 @@ with st.sidebar:
     st.title("☕ Filtres")
     st.markdown("---")
 
-    # Filtre produit
     produits = sorted(df["item"].dropna().unique())
-    produits_choix = st.multiselect(
-        "Produit",
-        produits,
-        default=produits
-    )
+    produits_choix = st.multiselect("Produit", produits, default=produits)
 
-    # Filtre lieu
     lieux = [l for l in df["location"].unique() if l != "Non renseigné"]
-    lieux_choix = st.multiselect(
-        "Lieu",
-        lieux,
-        default=lieux
-    )
+    lieux_choix = st.multiselect("Lieu", lieux, default=lieux)
 
-    # Filtre paiement
     paiements = [p for p in df["payment_method"].unique() if p != "Non renseigné"]
-    paiements_choix = st.multiselect(
-        "Mode de paiement",
-        paiements,
-        default=paiements
-    )
+    paiements_choix = st.multiselect("Mode de paiement", paiements, default=paiements)
 
-    # Filtre mois
     mois_choix = st.slider("Mois", 1, 12, (1, 12))
 
     st.markdown("---")
@@ -139,60 +112,69 @@ with tab1:
         Nb_ventes    = ("total_spent", "count"),
         Panier_moyen = ("total_spent", "mean"),
         Qte_vendue   = ("quantity", "sum")
-    ).round(2).sort_values("CA_total", ascending=False)
+    ).round(2).sort_values("CA_total", ascending=False).reset_index()
 
     col1, col2 = st.columns(2)
 
     with col1:
-        fig, ax = plt.subplots(figsize=(7, 4))
-        ca = recap["CA_total"].sort_values()
-        ax.barh(ca.index, ca.values, color="steelblue")
-        ax.set_title("CA total par produit (£)")
-        ax.set_xlabel("CA (£)")
-        st.pyplot(fig)
-        plt.close()
+        fig = px.bar(
+            recap.sort_values("CA_total"),
+            x="CA_total", y="item",
+            orientation="h",
+            title="CA total par produit (£)",
+            color="CA_total",
+            color_continuous_scale="Blues",
+            labels={"CA_total": "CA (£)", "item": "Produit"}
+        )
+        fig.update_layout(coloraxis_showscale=False)
+        st.plotly_chart(fig, use_container_width=True)
 
     with col2:
-        fig, ax = plt.subplots(figsize=(7, 4))
-        panier = recap["Panier_moyen"].sort_values()
-        ax.barh(panier.index, panier.values, color="orange")
-        ax.set_title("Panier moyen par produit (£)")
-        ax.set_xlabel("£ par transaction")
-        st.pyplot(fig)
-        plt.close()
+        fig = px.bar(
+            recap.sort_values("Panier_moyen"),
+            x="Panier_moyen", y="item",
+            orientation="h",
+            title="Panier moyen par produit (£)",
+            color="Panier_moyen",
+            color_continuous_scale="Oranges",
+            labels={"Panier_moyen": "£ par transaction", "item": "Produit"}
+        )
+        fig.update_layout(coloraxis_showscale=False)
+        st.plotly_chart(fig, use_container_width=True)
 
     col3, col4 = st.columns(2)
 
     with col3:
-        fig, ax = plt.subplots(figsize=(7, 4))
-        vol = recap["Qte_vendue"].sort_values()
-        ax.barh(vol.index, vol.values, color="green")
-        ax.set_title("Volume vendu par produit")
-        ax.set_xlabel("Quantité")
-        st.pyplot(fig)
-        plt.close()
+        fig = px.bar(
+            recap.sort_values("Qte_vendue"),
+            x="Qte_vendue", y="item",
+            orientation="h",
+            title="Volume vendu par produit",
+            color="Qte_vendue",
+            color_continuous_scale="Greens",
+            labels={"Qte_vendue": "Quantité", "item": "Produit"}
+        )
+        fig.update_layout(coloraxis_showscale=False)
+        st.plotly_chart(fig, use_container_width=True)
 
     with col4:
-        fig, ax = plt.subplots(figsize=(7, 4))
-        ax.pie(
-            recap["CA_total"],
-            labels=recap.index,
-            autopct="%1.1f%%",
-            startangle=90
+        fig = px.pie(
+            recap,
+            values="CA_total",
+            names="item",
+            title="Répartition du CA par produit"
         )
-        ax.set_title("Répartition du CA")
-        st.pyplot(fig)
-        plt.close()
+        st.plotly_chart(fig, use_container_width=True)
 
     st.markdown("**Tableau récapitulatif**")
     st.dataframe(recap, use_container_width=True)
 
     with st.expander("💡 Interprétation"):
         st.write("""
-        - **Salad** est le produit n°1 en CA (19 070£) avec le panier moyen le plus élevé (15.03£)
-        - **Coffee** est le plus commandé en volume mais seulement 6ème en CA — panier moyen de 6.07£
+        - **Salad** est le produit n°1 en CA avec le panier moyen le plus élevé (15.03£)
+        - **Coffee** est le plus commandé en volume mais seulement 6ème en CA (6.07£ de panier)
         - **Cookie** est le moins rentable (2.97£ de panier moyen)
-        - Les produits premium (Salad, Sandwich, Smoothie) représentent plus de 50% du CA total
+        - Les produits premium (Salad, Sandwich, Smoothie) représentent plus de 50% du CA
         """)
 
 # ══════════════════════════════════════════════════════════════════════════════
@@ -204,61 +186,70 @@ with tab2:
     col1, col2 = st.columns(2)
 
     with col1:
-        fig, ax = plt.subplots(figsize=(7, 4))
-        ca_mois = df_f.groupby("mois")["total_spent"].sum()
-        ax.plot(ca_mois.index, ca_mois.values, marker="o", color="steelblue", linewidth=2)
-        ax.set_title("CA par mois")
-        ax.set_xlabel("Mois")
-        ax.set_ylabel("CA (£)")
-        ax.set_xticks(range(1, 13))
-        ax.set_xticklabels(["Jan","Fév","Mar","Avr","Mai","Juin","Juil","Aoû","Sep","Oct","Nov","Déc"], rotation=45)
-        ax.grid(True, alpha=0.3)
-        st.pyplot(fig)
-        plt.close()
+        ca_mois = df_f.groupby("mois")["total_spent"].sum().reset_index()
+        ca_mois.columns = ["Mois", "CA"]
+        fig = px.line(
+            ca_mois, x="Mois", y="CA",
+            title="CA par mois",
+            markers=True,
+            labels={"CA": "CA (£)", "Mois": "Mois"}
+        )
+        fig.update_traces(line_color="steelblue", marker_size=8)
+        fig.update_xaxes(tickvals=list(range(1,13)),
+                         ticktext=["Jan","Fév","Mar","Avr","Mai","Juin","Juil","Aoû","Sep","Oct","Nov","Déc"])
+        st.plotly_chart(fig, use_container_width=True)
 
     with col2:
-        fig, ax = plt.subplots(figsize=(7, 4))
         ordre_jours = ["Monday","Tuesday","Wednesday","Thursday","Friday","Saturday","Sunday"]
         labels_jours = ["Lun","Mar","Mer","Jeu","Ven","Sam","Dim"]
-        ca_jour = df_f.groupby("jour_semaine")["total_spent"].sum().reindex(ordre_jours)
-        ax.bar(labels_jours, ca_jour.values, color="orange")
-        ax.set_title("CA par jour de la semaine")
-        ax.set_ylabel("CA (£)")
-        ax.grid(True, alpha=0.3, axis="y")
-        st.pyplot(fig)
-        plt.close()
+        ca_jour = df_f.groupby("jour_semaine")["total_spent"].sum().reindex(ordre_jours).reset_index()
+        ca_jour.columns = ["Jour", "CA"]
+        ca_jour["Jour"] = labels_jours
+        fig = px.bar(
+            ca_jour, x="Jour", y="CA",
+            title="CA par jour de la semaine",
+            color="CA",
+            color_continuous_scale="Oranges",
+            labels={"CA": "CA (£)"}
+        )
+        fig.update_layout(coloraxis_showscale=False)
+        st.plotly_chart(fig, use_container_width=True)
 
     col3, col4 = st.columns(2)
 
     with col3:
-        fig, ax = plt.subplots(figsize=(7, 4))
-        ca_trim = df_f.groupby("trimestre")["total_spent"].sum()
-        ax.bar(["T1","T2","T3","T4"], ca_trim.values, color="green")
-        ax.set_title("CA par trimestre")
-        ax.set_ylabel("CA (£)")
-        ax.grid(True, alpha=0.3, axis="y")
-        st.pyplot(fig)
-        plt.close()
+        ca_trim = df_f.groupby("trimestre")["total_spent"].sum().reset_index()
+        ca_trim.columns = ["Trimestre", "CA"]
+        ca_trim["Trimestre"] = ["T1","T2","T3","T4"]
+        fig = px.bar(
+            ca_trim, x="Trimestre", y="CA",
+            title="CA par trimestre",
+            color="CA",
+            color_continuous_scale="Greens",
+            labels={"CA": "CA (£)"}
+        )
+        fig.update_layout(coloraxis_showscale=False)
+        st.plotly_chart(fig, use_container_width=True)
 
     with col4:
-        fig, ax = plt.subplots(figsize=(7, 4))
-        vol_mois = df_f.groupby("mois")["total_spent"].count()
-        ax.bar(range(1,13), vol_mois.values, color="steelblue", alpha=0.7)
-        ax.set_title("Nombre de transactions par mois")
-        ax.set_xlabel("Mois")
-        ax.set_ylabel("Nb transactions")
-        ax.set_xticks(range(1, 13))
-        ax.set_xticklabels(["Jan","Fév","Mar","Avr","Mai","Juin","Juil","Aoû","Sep","Oct","Nov","Déc"], rotation=45)
-        ax.grid(True, alpha=0.3, axis="y")
-        st.pyplot(fig)
-        plt.close()
+        ca_produit_mois = df_f.groupby(["mois","item"])["total_spent"].sum().reset_index()
+        fig = px.line(
+            ca_produit_mois, x="mois", y="total_spent",
+            color="item",
+            title="CA par produit et par mois",
+            markers=True,
+            labels={"total_spent": "CA (£)", "mois": "Mois", "item": "Produit"}
+        )
+        fig.update_xaxes(tickvals=list(range(1,13)),
+                         ticktext=["Jan","Fév","Mar","Avr","Mai","Juin","Juil","Aoû","Sep","Oct","Nov","Déc"])
+        st.plotly_chart(fig, use_container_width=True)
 
     with st.expander("💡 Interprétation"):
         st.write("""
         - Le café tourne de façon **très régulière toute l'année** — saisonnalité quasi inexistante
         - Écart de seulement ~700£ entre le meilleur et le pire mois
         - Le CA est distribué uniformément sur les 7 jours de la semaine
-        - **T2 (Avril-Juin)** est le meilleur trimestre — raison inconnue, à investiguer
+        - **T2 (Avril-Juin)** est le meilleur trimestre
         """)
 
 # ══════════════════════════════════════════════════════════════════════════════
@@ -266,60 +257,61 @@ with tab2:
 # ══════════════════════════════════════════════════════════════════════════════
 with tab3:
     st.subheader("Analyse par lieu")
-    st.info("Les transactions 'Non renseigné' sont exclues de cette analyse (40% du fichier)")
+    st.info("Les transactions 'Non renseigné' sont exclues (40% du fichier)")
 
     df_lieu = df_f[df_f["location"] != "Non renseigné"]
 
     col1, col2 = st.columns(2)
 
     with col1:
-        fig, ax = plt.subplots(figsize=(7, 4))
-        ca_lieu = df_lieu.groupby("location")["total_spent"].sum()
-        ax.bar(ca_lieu.index, ca_lieu.values, color=["steelblue","orange"])
-        ax.set_title("CA total par lieu")
-        ax.set_ylabel("CA (£)")
-        ax.grid(True, alpha=0.3, axis="y")
-        st.pyplot(fig)
-        plt.close()
+        ca_lieu = df_lieu.groupby("location")["total_spent"].sum().reset_index()
+        ca_lieu.columns = ["Lieu", "CA"]
+        fig = px.bar(
+            ca_lieu, x="Lieu", y="CA",
+            title="CA total par lieu",
+            color="Lieu",
+            labels={"CA": "CA (£)"}
+        )
+        st.plotly_chart(fig, use_container_width=True)
 
     with col2:
-        fig, ax = plt.subplots(figsize=(7, 4))
-        panier_lieu = df_lieu.groupby("location")["total_spent"].mean()
-        ax.bar(panier_lieu.index, panier_lieu.values, color=["steelblue","orange"])
-        ax.set_title("Panier moyen par lieu (£)")
-        ax.set_ylabel("£ par transaction")
-        ax.grid(True, alpha=0.3, axis="y")
-        st.pyplot(fig)
-        plt.close()
+        panier_lieu = df_lieu.groupby("location")["total_spent"].mean().reset_index()
+        panier_lieu.columns = ["Lieu", "Panier moyen"]
+        fig = px.bar(
+            panier_lieu, x="Lieu", y="Panier moyen",
+            title="Panier moyen par lieu (£)",
+            color="Lieu",
+            labels={"Panier moyen": "£ par transaction"}
+        )
+        st.plotly_chart(fig, use_container_width=True)
 
     col3, col4 = st.columns(2)
 
     with col3:
-        fig, ax = plt.subplots(figsize=(7, 5))
-        ca_produit_lieu = df_lieu.groupby(["item","location"])["total_spent"].sum().unstack()
-        ca_produit_lieu.plot(kind="bar", ax=ax, color=["steelblue","orange"])
-        ax.set_title("CA par produit selon le lieu")
-        ax.set_ylabel("CA (£)")
-        ax.set_xlabel("")
-        ax.tick_params(axis="x", rotation=45)
-        ax.grid(True, alpha=0.3, axis="y")
-        st.pyplot(fig)
-        plt.close()
+        ca_produit_lieu = df_lieu.groupby(["item","location"])["total_spent"].sum().reset_index()
+        fig = px.bar(
+            ca_produit_lieu, x="item", y="total_spent",
+            color="location",
+            barmode="group",
+            title="CA par produit selon le lieu",
+            labels={"total_spent": "CA (£)", "item": "Produit", "location": "Lieu"}
+        )
+        st.plotly_chart(fig, use_container_width=True)
 
     with col4:
-        fig, ax = plt.subplots(figsize=(7, 4))
-        nb_lieu = df_lieu.groupby("location")["total_spent"].count()
-        ax.pie(nb_lieu.values, labels=nb_lieu.index, autopct="%1.1f%%",
-               colors=["steelblue","orange"], startangle=90)
-        ax.set_title("Répartition des transactions")
-        st.pyplot(fig)
-        plt.close()
+        nb_lieu = df_lieu.groupby("location")["total_spent"].count().reset_index()
+        nb_lieu.columns = ["Lieu", "Nb transactions"]
+        fig = px.pie(
+            nb_lieu, values="Nb transactions", names="Lieu",
+            title="Répartition des transactions par lieu"
+        )
+        st.plotly_chart(fig, use_container_width=True)
 
     with st.expander("💡 Interprétation"):
         st.write("""
         - In-store et Takeaway sont **parfaitement équilibrés** en CA et en nombre de transactions
         - Panier moyen quasi identique : 9.03£ In-store vs 8.80£ Takeaway
-        - Aucun produit n'a de préférence marquée pour un canal (écart max de 5%)
+        - Aucun produit n'a de préférence marquée pour un canal
         - Les deux canaux sont stratégiquement aussi importants l'un que l'autre
         """)
 
@@ -328,30 +320,55 @@ with tab3:
 # ══════════════════════════════════════════════════════════════════════════════
 with tab4:
     st.subheader("Analyse par mode de paiement")
-    st.info("Les transactions 'Non renseigné' sont exclues de cette analyse")
+    st.info("Les transactions 'Non renseigné' sont exclues")
 
     df_paie = df_f[df_f["payment_method"] != "Non renseigné"]
 
     col1, col2 = st.columns(2)
 
     with col1:
-        fig, ax = plt.subplots(figsize=(7, 4))
-        nb_paie = df_paie.groupby("payment_method")["total_spent"].count()
-        ax.pie(nb_paie.values, labels=nb_paie.index, autopct="%1.1f%%",
-               colors=["steelblue","orange","green"], startangle=90)
-        ax.set_title("Répartition des transactions")
-        st.pyplot(fig)
-        plt.close()
+        nb_paie = df_paie.groupby("payment_method")["total_spent"].count().reset_index()
+        nb_paie.columns = ["Paiement", "Nb transactions"]
+        fig = px.pie(
+            nb_paie, values="Nb transactions", names="Paiement",
+            title="Répartition des transactions par mode de paiement"
+        )
+        st.plotly_chart(fig, use_container_width=True)
 
     with col2:
-        fig, ax = plt.subplots(figsize=(7, 4))
-        panier_paie = df_paie.groupby("payment_method")["total_spent"].mean().round(2)
-        ax.bar(panier_paie.index, panier_paie.values, color=["steelblue","orange","green"])
-        ax.set_title("Panier moyen par mode de paiement (£)")
-        ax.set_ylabel("£ par transaction")
-        ax.grid(True, alpha=0.3, axis="y")
-        st.pyplot(fig)
-        plt.close()
+        panier_paie = df_paie.groupby("payment_method")["total_spent"].mean().reset_index()
+        panier_paie.columns = ["Paiement", "Panier moyen"]
+        fig = px.bar(
+            panier_paie, x="Paiement", y="Panier moyen",
+            title="Panier moyen par mode de paiement (£)",
+            color="Paiement",
+            labels={"Panier moyen": "£ par transaction"}
+        )
+        st.plotly_chart(fig, use_container_width=True)
+
+    col3, col4 = st.columns(2)
+
+    with col3:
+        ca_produit_paie = df_paie.groupby(["item","payment_method"])["total_spent"].sum().reset_index()
+        fig = px.bar(
+            ca_produit_paie, x="item", y="total_spent",
+            color="payment_method",
+            barmode="group",
+            title="CA par produit selon le mode de paiement",
+            labels={"total_spent": "CA (£)", "item": "Produit", "payment_method": "Paiement"}
+        )
+        st.plotly_chart(fig, use_container_width=True)
+
+    with col4:
+        ca_paie = df_paie.groupby("payment_method")["total_spent"].sum().reset_index()
+        ca_paie.columns = ["Paiement", "CA"]
+        fig = px.bar(
+            ca_paie, x="Paiement", y="CA",
+            title="CA total par mode de paiement",
+            color="Paiement",
+            labels={"CA": "CA (£)"}
+        )
+        st.plotly_chart(fig, use_container_width=True)
 
     with st.expander("💡 Interprétation"):
         st.write("""
