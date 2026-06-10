@@ -15,7 +15,7 @@ st.set_page_config(
 # ─── CHARGEMENT ET NETTOYAGE ──────────────────────────────────────────────────
 @st.cache_data
 def load_data():
-    df = pd.read_csv("dirty_cafe_sales.csv", sep=",", encoding="utf-8")
+    df = pd.read_csv("cafe_sales_clean.csv", sep=",", encoding="utf-8")
 
     # Renommer les colonnes
     df.columns = df.columns.str.strip().str.lower().str.replace(" ", "_")
