@@ -4,7 +4,7 @@ import streamlit as st
 import plotly.express as px
 import plotly.graph_objects as go
 
-st.set_page_config(page_title="Dashboard Café 2023", page_icon="☕", layout="wide")
+st.set_page_config(page_title="Dashboard Cafe 2023", page_icon="☕", layout="wide")
 
 # ─── CHARGEMENT ───────────────────────────────────────────────────────────────
 @st.cache_data
@@ -24,8 +24,8 @@ def load_data():
     prix_to_item = {1.0: "Cookie", 1.5: "Tea", 2.0: "Coffee", 5.0: "Salad"}
     mask_item = df["item"].isna() & df["price_per_unit"].isin(prix_to_item.keys())
     df.loc[mask_item, "item"] = df.loc[mask_item, "price_per_unit"].map(prix_to_item)
-    df["location"]       = df["location"].fillna("Non renseigné")
-    df["payment_method"] = df["payment_method"].fillna("Non renseigné")
+    df["location"]       = df["location"].fillna("Non renseigne")
+    df["payment_method"] = df["payment_method"].fillna("Non renseigne")
     df["transaction_date"] = pd.to_datetime(df["transaction_date"], errors="coerce")
     df["mois"]             = df["transaction_date"].dt.month
     df["mois_nom"]         = df["transaction_date"].dt.strftime("%B")
@@ -38,14 +38,14 @@ def load_data():
 df = load_data()
 
 # ─── CALCULS CA PERDU ────────────────────────────────────────────────────────
-ca_reel = df["total_spent"].sum()
+ca_reel_total = df["total_spent"].sum()
 nb_sans_ca = df["total_spent"].isna().sum()
-panier_moyen = df["total_spent"].mean()
-ca_perdu = nb_sans_ca * panier_moyen
-ca_estime = ca_reel + ca_perdu
+panier_moyen_global = df["total_spent"].mean()
+ca_perdu_total = nb_sans_ca * panier_moyen_global
+ca_estime_total = ca_reel_total + ca_perdu_total
 ca_sans_produit = df[df["item"].isna()]["total_spent"].sum()
-ca_sans_lieu = df[df["location"] == "Non renseigné"]["total_spent"].sum()
-ca_sans_paiement = df[df["payment_method"] == "Non renseigné"]["total_spent"].sum()
+ca_sans_lieu = df[df["location"] == "Non renseigne"]["total_spent"].sum()
+ca_sans_paiement = df[df["payment_method"] == "Non renseigne"]["total_spent"].sum()
 
 # ─── SIDEBAR ──────────────────────────────────────────────────────────────────
 with st.sidebar:
@@ -53,21 +53,31 @@ with st.sidebar:
     st.markdown("---")
     produits = sorted(df["item"].dropna().unique())
     produits_choix = st.multiselect("Produit", produits, default=produits)
-    lieux = [l for l in df["location"].unique() if l != "Non renseigné"]
+    lieux = [l for l in df["location"].unique() if l != "Non renseigne"]
     lieux_choix = st.multiselect("Lieu", lieux, default=lieux)
-    paiements = [p for p in df["payment_method"].unique() if p != "Non renseigné"]
+    paiements = [p for p in df["payment_method"].unique() if p != "Non renseigne"]
     paiements_choix = st.multiselect("Mode de paiement", paiements, default=paiements)
     mois_choix = st.slider("Mois", 1, 12, (1, 12))
     st.markdown("---")
     st.caption("Cafe 2023 - 10 000 transactions")
 
-# ─── FILTRAGE ────────────────────────────────────────────────────────────────
+# ─── FILTRAGE — FIX: garde les NaN item ──────────────────────────────────────
 df_f = df[
-    (df["item"].isin(produits_choix)) &
-    (df["location"].isin(lieux_choix + ["Non renseigné"])) &
-    (df["payment_method"].isin(paiements_choix + ["Non renseigné"])) &
+    (df["item"].isin(produits_choix) | df["item"].isna()) &
+    (df["location"].isin(lieux_choix + ["Non renseigne"])) &
+    (df["payment_method"].isin(paiements_choix + ["Non renseigne"])) &
     (df["mois"].between(mois_choix[0], mois_choix[1]))
 ]
+
+# ─── RECALCUL CA SUR DF_F ────────────────────────────────────────────────────
+ca_reel_f = df_f["total_spent"].sum()
+nb_sans_ca_f = df_f["total_spent"].isna().sum()
+panier_moyen_f = df_f["total_spent"].mean()
+ca_perdu_f = nb_sans_ca_f * panier_moyen_f
+ca_estime_f = ca_reel_f + ca_perdu_f
+ca_sans_lieu_f = df_f[df_f["location"] == "Non renseigne"]["total_spent"].sum()
+ca_sans_paiement_f = df_f[df_f["payment_method"] == "Non renseigne"]["total_spent"].sum()
+ca_sans_produit_f = df_f[df_f["item"].isna()]["total_spent"].sum()
 
 # ─── TITRE ───────────────────────────────────────────────────────────────────
 st.title("Dashboard Ventes - Cafe 2023")
@@ -76,17 +86,17 @@ st.markdown("---")
 
 # ─── KPI GLOBAUX ─────────────────────────────────────────────────────────────
 col1, col2, col3, col4, col5, col6 = st.columns(6)
-col1.metric("CA Reel", f"{df_f['total_spent'].sum():,.0f} £")
-col2.metric("CA Estime total", f"{ca_estime:,.0f} £", delta=f"+{ca_perdu:.0f}£ perdus")
-col3.metric("Panier moyen", f"{df_f['total_spent'].mean():.2f} £")
+col1.metric("CA Reel", f"{ca_reel_f:,.0f} £")
+col2.metric("CA Estime total", f"{ca_estime_f:,.0f} £", delta=f"+{ca_perdu_f:.0f}£ perdus")
+col3.metric("Panier moyen", f"{panier_moyen_f:.2f} £")
 col4.metric("Transactions", f"{df_f['total_spent'].notna().sum():,}")
-col5.metric("Produit star", df_f.groupby("item")["total_spent"].sum().idxmax() if len(df_f) > 0 else "-")
+col5.metric("Produit star", df_f.groupby("item")["total_spent"].sum().idxmax() if df_f["item"].notna().any() else "-")
 col6.metric("Meilleur mois", str(int(df_f.groupby("mois")["total_spent"].sum().idxmax())) if len(df_f) > 0 else "-")
 
 st.markdown("---")
 
 # ─── ONGLETS ─────────────────────────────────────────────────────────────────
-tab1, tab2, tab3, tab4, tab5, tab6, tab7, tab8, tab9, tab10 = st.tabs([
+tab1, tab2, tab3, tab4, tab5, tab6, tab7, tab8, tab9, tab10, tab11 = st.tabs([
     "Produits",
     "Temps",
     "Saisonnalite",
@@ -96,6 +106,7 @@ tab1, tab2, tab3, tab4, tab5, tab6, tab7, tab8, tab9, tab10 = st.tabs([
     "Analyse libre",
     "Comparateur",
     "Top N",
+    "Exploration (Pygwalker)",
     "Qualite des donnees"
 ])
 
@@ -112,10 +123,8 @@ with tab1:
         Qte_vendue   = ("quantity", "sum")
     ).round(2).sort_values("CA_total", ascending=False).reset_index()
 
-    # CA non attribue
-    ca_non_attribue = df_f[df_f["item"].isna()]["total_spent"].sum()
-    if ca_non_attribue > 0:
-        st.warning(f"CA non attribue a un produit (item manquant) : {ca_non_attribue:.2f} £ — ce CA existe mais on ne sait pas quel produit l'a genere.")
+    if ca_sans_produit_f > 0:
+        st.warning(f"CA non attribue a un produit : {ca_sans_produit_f:.2f} £ — la vente a eu lieu mais on ne sait pas quel produit a ete vendu.")
 
     col1, col2 = st.columns(2)
     with col1:
@@ -173,7 +182,7 @@ with tab2:
                           xaxis=dict(tickvals=list(range(1,13)),
                                      ticktext=["Jan","Fev","Mar","Avr","Mai","Juin","Juil","Aou","Sep","Oct","Nov","Dec"]))
         st.plotly_chart(fig, use_container_width=True)
-        st.caption(f"Tendance : +{coef[0]:.0f}£ par mois — croissance de 0.7% sur l'annee. Stable mais peu dynamique.")
+        st.caption(f"Tendance : +{coef[0]:.0f}£ par mois — croissance de 0.7% sur l'annee.")
 
     with col2:
         ordre_jours = ["Monday","Tuesday","Wednesday","Thursday","Friday","Saturday","Sunday"]
@@ -206,14 +215,13 @@ with tab2:
                      labels={"total_spent": "CA (£)", "trimestre": "Trimestre"})
         fig.update_layout(coloraxis_showscale=False)
         st.plotly_chart(fig, use_container_width=True)
-        st.caption("T2 (Avril-Juin) est le meilleur trimestre — raison a investiguer.")
+        st.caption("T2 (Avril-Juin) est le meilleur trimestre.")
 
 # ══════════════════════════════════════════════════════════════════════════════
 # TAB 3 - SAISONNALITE
 # ══════════════════════════════════════════════════════════════════════════════
 with tab3:
     st.subheader("Saisonnalite par produit")
-    st.markdown("Le CA global est stable mais certains produits ont une vraie saisonnalite cachee.")
 
     ca_produit_mois = df_f.groupby(["mois","item"])["total_spent"].sum().unstack().fillna(0)
     ca_produit_mois_norm = ca_produit_mois.div(ca_produit_mois.mean()).round(2)
@@ -227,7 +235,7 @@ with tab3:
         fig.update_xaxes(tickvals=list(range(1,13)),
                          ticktext=["Jan","Fev","Mar","Avr","Mai","Juin","Juil","Aou","Sep","Oct","Nov","Dec"])
         st.plotly_chart(fig, use_container_width=True)
-        st.caption("Survolez chaque courbe pour voir les details par produit et par mois.")
+        st.caption("Survolez chaque courbe pour voir les details.")
 
     with col2:
         fig = px.imshow(ca_produit_mois_norm.T,
@@ -256,19 +264,14 @@ with tab3:
         st.markdown("### Insights cles")
         st.markdown("""
         **Sandwich** -> pic en janvier (+28%), chute en ete
-        -> Produit hivernal par excellence
 
         **Smoothie** -> chute en janvier (-30%), remonte en ete
-        -> Boisson fraiche saisonniere
 
-        **Juice** -> chute en juillet/aout (-25%)
-        -> Contre-intuitif, a investiguer
+        **Juice** -> chute en juillet/aout (-25%) — contre-intuitif
 
-        **Cookie** -> le plus stable (variation 0.27)
-        -> Achat reflexe toutes saisons
+        **Cookie** -> le plus stable — achat reflexe toutes saisons
 
-        **Recommandation** : adapter le menu selon la saison
-        plutot qu'un menu fixe toute l'annee.
+        **Recommandation** : adapter le menu selon la saison.
         """)
 
 # ══════════════════════════════════════════════════════════════════════════════
@@ -289,7 +292,6 @@ with tab4:
                 delta=f"{s2['total_spent'].count()-s1['total_spent'].count()} vs S2")
 
     st.markdown("---")
-
     col1, col2 = st.columns(2)
     with col1:
         ca_semestre = df_f.groupby(["semestre","item"])["total_spent"].sum().reset_index()
@@ -297,7 +299,7 @@ with tab4:
                      title="CA par produit - S1 vs S2",
                      labels={"total_spent": "CA (£)", "item": "Produit", "semestre": "Semestre"})
         st.plotly_chart(fig, use_container_width=True)
-        st.caption("Sandwich domine en S1, Salad compense en S2 — les deux se relaient comme produit star.")
+        st.caption("Sandwich domine en S1, Salad compense en S2.")
 
     with col2:
         panier_s1 = s1.groupby("item")["total_spent"].mean()
@@ -307,20 +309,14 @@ with tab4:
         diff = diff.sort_values("Variation")
         fig = px.bar(diff, x="Produit", y="Variation",
                      title="Variation du panier moyen S1 -> S2 (£)",
-                     color="Variation",
-                     color_continuous_scale=["red","white","green"],
+                     color="Variation", color_continuous_scale=["red","white","green"],
                      color_continuous_midpoint=0,
                      labels={"Variation": "£ (+ = hausse en S2)"})
         fig.add_hline(y=0, line_dash="dash", line_color="black")
         st.plotly_chart(fig, use_container_width=True)
         st.caption("Sandwich perd 0.54£ en S2, Salad gagne exactement 0.54£ — compensation parfaite.")
 
-    st.info("""
-    Le cafe genere quasi le meme CA en S1 et S2 (-0.7%) mais pour des raisons differentes.
-    En S1 : moins de clients mais panier plus eleve (Sandwich dominant).
-    En S2 : plus de clients mais panier plus faible (produits estivaux moins chers).
-    Opportunite : developper une version estivale du Sandwich pour maintenir le panier en S2.
-    """)
+    st.info("Opportunite : developper une version estivale du Sandwich pour maintenir le panier en S2.")
 
 # ══════════════════════════════════════════════════════════════════════════════
 # TAB 5 - LIEU
@@ -328,44 +324,43 @@ with tab4:
 with tab5:
     st.subheader("Analyse par lieu")
 
-    ca_non_lieu = df_f[df_f["location"] == "Non renseigné"]["total_spent"].sum()
-    pct_non_lieu = ca_non_lieu / df_f["total_spent"].sum() * 100
-    st.warning(f"CA sans lieu identifie : {ca_non_lieu:,.0f}£ soit {pct_non_lieu:.1f}% du CA — on ne sait pas si ces ventes etaient In-store ou Takeaway.")
+    pct_non_lieu = ca_sans_lieu_f / ca_reel_f * 100
+    st.warning(f"CA sans lieu identifie : {ca_sans_lieu_f:,.0f}£ soit {pct_non_lieu:.1f}% du CA — on ne sait pas si ces ventes etaient In-store ou Takeaway.")
 
-    df_lieu = df_f[df_f["location"] != "Non renseigné"]
+    df_lieu = df_f[df_f["location"] != "Non renseigne"]
 
     col1, col2 = st.columns(2)
     with col1:
         ca_lieu = df_lieu.groupby("location")["total_spent"].sum().reset_index()
-        fig = px.bar(ca_lieu, x="location", y="total_spent", title="CA total par lieu (transactions renseignees)",
+        fig = px.bar(ca_lieu, x="location", y="total_spent",
+                     title="CA total par lieu (transactions renseignees)",
                      color="location", labels={"total_spent": "CA (£)", "location": "Lieu"})
         st.plotly_chart(fig, use_container_width=True)
         st.caption("In-store et Takeaway sont quasi a egalite — sur les 60% de transactions renseignees.")
 
     with col2:
+        ca_lieu_total = df_f.groupby("location")["total_spent"].sum().reset_index()
+        fig = px.pie(ca_lieu_total, values="total_spent", names="location",
+                     title="Repartition du CA par lieu (avec Non renseigne)",
+                     color_discrete_map={"In-store": "steelblue", "Takeaway": "orange", "Non renseigne": "lightgrey"})
+        st.plotly_chart(fig, use_container_width=True)
+        st.caption("Le 'Non renseigne' represente 40% du CA — analyses par lieu incompletes.")
+
+    col3, col4 = st.columns(2)
+    with col3:
         panier_lieu = df_lieu.groupby("location")["total_spent"].mean().reset_index()
         fig = px.bar(panier_lieu, x="location", y="total_spent", title="Panier moyen par lieu (£)",
                      color="location", labels={"total_spent": "£/transaction", "location": "Lieu"})
         st.plotly_chart(fig, use_container_width=True)
         st.caption("Ecart de 0.23£ entre In-store et Takeaway — comportement d'achat identique.")
 
-    col3, col4 = st.columns(2)
-    with col3:
+    with col4:
         ca_produit_lieu = df_lieu.groupby(["item","location"])["total_spent"].sum().reset_index()
         fig = px.bar(ca_produit_lieu, x="item", y="total_spent", color="location", barmode="group",
                      title="CA par produit selon le lieu",
                      labels={"total_spent": "CA (£)", "item": "Produit", "location": "Lieu"})
         st.plotly_chart(fig, use_container_width=True)
-        st.caption("Aucun produit n'a de preference marquee pour un canal — ecart max de 5%.")
-
-    with col4:
-        # Camembert avec Non renseigne
-        ca_lieu_total = df_f.groupby("location")["total_spent"].sum().reset_index()
-        fig = px.pie(ca_lieu_total, values="total_spent", names="location",
-                     title="Repartition du CA par lieu (avec Non renseigne)",
-                     color_discrete_map={"In-store": "steelblue", "Takeaway": "orange", "Non renseigné": "lightgrey"})
-        st.plotly_chart(fig, use_container_width=True)
-        st.caption("Le 'Non renseigne' represente 40% du CA — les analyses par lieu ne portent que sur 60% des ventes.")
+        st.caption("Aucun produit n'a de preference marquee pour un canal.")
 
 # ══════════════════════════════════════════════════════════════════════════════
 # TAB 6 - PAIEMENT
@@ -373,11 +368,10 @@ with tab5:
 with tab6:
     st.subheader("Analyse par mode de paiement")
 
-    ca_non_paie = df_f[df_f["payment_method"] == "Non renseigné"]["total_spent"].sum()
-    pct_non_paie = ca_non_paie / df_f["total_spent"].sum() * 100
-    st.warning(f"CA sans mode de paiement identifie : {ca_non_paie:,.0f}£ soit {pct_non_paie:.1f}% du CA — on ne sait pas comment ces ventes ont ete payees.")
+    pct_non_paie = ca_sans_paiement_f / ca_reel_f * 100
+    st.warning(f"CA sans mode de paiement identifie : {ca_sans_paiement_f:,.0f}£ soit {pct_non_paie:.1f}% du CA.")
 
-    df_paie = df_f[df_f["payment_method"] != "Non renseigné"]
+    df_paie = df_f[df_f["payment_method"] != "Non renseigne"]
 
     col1, col2 = st.columns(2)
     with col1:
@@ -388,6 +382,16 @@ with tab6:
         st.caption("Les 3 modes de paiement sont parfaitement equilibres a ~33% chacun.")
 
     with col2:
+        ca_paie_total = df_f.groupby("payment_method")["total_spent"].sum().reset_index()
+        fig = px.pie(ca_paie_total, values="total_spent", names="payment_method",
+                     title="Repartition du CA par paiement (avec Non renseigne)",
+                     color_discrete_map={"Credit Card": "steelblue", "Cash": "orange",
+                                          "Digital Wallet": "green", "Non renseigne": "lightgrey"})
+        st.plotly_chart(fig, use_container_width=True)
+        st.caption("Le 'Non renseigne' represente 31% du CA — analyses par paiement incompletes.")
+
+    col3, col4 = st.columns(2)
+    with col3:
         panier_paie = df_paie.groupby("payment_method")["total_spent"].mean().reset_index()
         fig = px.bar(panier_paie, x="payment_method", y="total_spent",
                      title="Panier moyen par mode de paiement",
@@ -396,45 +400,28 @@ with tab6:
         st.plotly_chart(fig, use_container_width=True)
         st.caption("Ecart de 0.13£ entre les 3 modes — comportement d'achat independant du paiement.")
 
-    col3, col4 = st.columns(2)
-    with col3:
+    with col4:
         ca_produit_paie = df_paie.groupby(["item","payment_method"])["total_spent"].sum().reset_index()
         fig = px.bar(ca_produit_paie, x="item", y="total_spent", color="payment_method", barmode="group",
-                     title="CA par produit selon le mode de paiement",
+                     title="CA par produit selon le paiement",
                      labels={"total_spent": "CA (£)", "item": "Produit", "payment_method": "Paiement"})
         st.plotly_chart(fig, use_container_width=True)
         st.caption("Repartition equilibree sur tous les produits.")
-
-    with col4:
-        ca_paie_total = df_f.groupby("payment_method")["total_spent"].sum().reset_index()
-        fig = px.pie(ca_paie_total, values="total_spent", names="payment_method",
-                     title="Repartition du CA par paiement (avec Non renseigne)",
-                     color_discrete_map={"Credit Card": "steelblue", "Cash": "orange",
-                                          "Digital Wallet": "green", "Non renseigné": "lightgrey"})
-        st.plotly_chart(fig, use_container_width=True)
-        st.caption("Le 'Non renseigne' represente 31% du CA — les analyses par paiement ne portent que sur 69% des ventes.")
 
 # ══════════════════════════════════════════════════════════════════════════════
 # TAB 7 - ANALYSE LIBRE
 # ══════════════════════════════════════════════════════════════════════════════
 with tab7:
     st.subheader("Analyse personnalisee")
-    st.markdown("Construis ton propre graphique en choisissant les axes et le type.")
 
     axes_possibles = {
-        "Produit": "item",
-        "Lieu": "location",
-        "Mode de paiement": "payment_method",
-        "Mois": "mois",
-        "Jour de la semaine": "jour_semaine",
-        "Trimestre": "trimestre",
-        "Semestre": "semestre"
+        "Produit": "item", "Lieu": "location", "Mode de paiement": "payment_method",
+        "Mois": "mois", "Jour de la semaine": "jour_semaine",
+        "Trimestre": "trimestre", "Semestre": "semestre"
     }
     metriques_possibles = {
-        "CA total (£)": "sum",
-        "Panier moyen (£)": "mean",
-        "Nombre de transactions": "count",
-        "Quantite vendue": "sum_qty"
+        "CA total (£)": "sum", "Panier moyen (£)": "mean",
+        "Nombre de transactions": "count", "Quantite vendue": "sum_qty"
     }
 
     col_params1, col_params2, col_params3, col_params4 = st.columns(4)
@@ -445,7 +432,7 @@ with tab7:
     with col_params3:
         couleur_par = st.selectbox("Couleur", ["Aucune"] + list(axes_possibles.keys()))
     with col_params4:
-        type_graph = st.selectbox("Type", ["Barres", "Ligne", "Camembert", "Barres horizontales"])
+        type_graph = st.selectbox("Type", ["Barres", "Ligne", "Camembert", "Barres horizontales", "Scatter", "Area"])
 
     col_x = axes_possibles[axe_x]
     agg = metriques_possibles[metrique]
@@ -464,7 +451,6 @@ with tab7:
         df_graph.columns = [col_x, "valeur"]
 
     df_graph["valeur"] = df_graph["valeur"].round(2)
-    col_couleur = axes_possibles[couleur_par] if couleur_par != "Aucune" else None
 
     if type_graph == "Barres":
         fig = px.bar(df_graph, x=col_x, y="valeur", color=col_x,
@@ -476,6 +462,12 @@ with tab7:
     elif type_graph == "Ligne":
         fig = px.line(df_graph, x=col_x, y="valeur", markers=True,
                       title=f"{metrique} par {axe_x}", labels={"valeur": metrique, col_x: axe_x})
+    elif type_graph == "Area":
+        fig = px.area(df_graph, x=col_x, y="valeur",
+                      title=f"{metrique} par {axe_x}", labels={"valeur": metrique, col_x: axe_x})
+    elif type_graph == "Scatter":
+        fig = px.scatter(df_graph, x=col_x, y="valeur", color=col_x, size="valeur",
+                         title=f"{metrique} par {axe_x}", labels={"valeur": metrique, col_x: axe_x})
     else:
         fig = px.pie(df_graph, values="valeur", names=col_x, title=f"{metrique} par {axe_x}")
 
@@ -579,18 +571,34 @@ with tab9:
     st.dataframe(top_df.sort_values(y_col, ascending=False), use_container_width=True)
 
 # ══════════════════════════════════════════════════════════════════════════════
-# TAB 10 - QUALITE DES DONNEES
+# TAB 10 - PYGWALKER
 # ══════════════════════════════════════════════════════════════════════════════
 with tab10:
+    st.subheader("Exploration libre des donnees")
+    st.markdown("Glisse-depose les colonnes pour construire n'importe quel graphique — comme Tableau ou PowerBI.")
+
+    try:
+        import pygwalker as pyg
+        from pygwalker.api.streamlit import StreamlitRenderer
+        renderer = StreamlitRenderer(df_f, spec="./gw_config.json", spec_io_mode="rw")
+        renderer.explorer()
+    except ImportError:
+        st.error("Pygwalker n'est pas installe. Ajoute 'pygwalker' dans ton requirements.txt")
+        st.info("Pour l'installer : pip install pygwalker")
+
+# ══════════════════════════════════════════════════════════════════════════════
+# TAB 11 - QUALITE DES DONNEES
+# ══════════════════════════════════════════════════════════════════════════════
+with tab11:
     st.subheader("Qualite des donnees")
     st.error("Probleme structurel : 25 a 28% d'erreurs systeme par mois en continu sur toute l'annee 2023.")
 
     col1, col2, col3, col4, col5 = st.columns(5)
-    col1.metric("CA reel", f"{ca_reel:,.0f} £")
-    col2.metric("CA perdu", f"{ca_perdu:.0f} £", delta="-0.4% du CA", delta_color="inverse")
-    col3.metric("CA sans produit", f"{ca_sans_produit:,.0f} £", delta="-5.8% du CA", delta_color="inverse")
-    col4.metric("CA sans lieu", f"{ca_sans_lieu:,.0f} £", delta="-39.7% du CA", delta_color="inverse")
-    col5.metric("CA sans paiement", f"{ca_sans_paiement:,.0f} £", delta="-31.2% du CA", delta_color="inverse")
+    col1.metric("CA reel", f"{ca_reel_f:,.0f} £")
+    col2.metric("CA perdu", f"{ca_perdu_f:.0f} £", delta="-0.4% du CA", delta_color="inverse")
+    col3.metric("CA sans produit", f"{ca_sans_produit_f:,.0f} £", delta="-5.8% du CA", delta_color="inverse")
+    col4.metric("CA sans lieu", f"{ca_sans_lieu_f:,.0f} £", delta="-39.7% du CA", delta_color="inverse")
+    col5.metric("CA sans paiement", f"{ca_sans_paiement_f:,.0f} £", delta="-31.2% du CA", delta_color="inverse")
 
     st.markdown("---")
     st.markdown("""
@@ -603,7 +611,6 @@ with tab10:
     """)
 
     st.markdown("---")
-
     col1, col2 = st.columns(2)
     with col1:
         manquants = {"item": 480, "transaction_date": 460, "total_spent": 40,
@@ -614,7 +621,6 @@ with tab10:
                      labels={"x": "Colonne", "y": "Nb valeurs manquantes"})
         fig.update_layout(coloraxis_showscale=False)
         st.plotly_chart(fig, use_container_width=True)
-        st.caption("item et transaction_date sont les colonnes les plus touchees.")
 
     with col2:
         taux_erreur_mois = {1: 27.5, 2: 26.5, 3: 27.2, 4: 28.0, 5: 25.7, 6: 24.8,
@@ -627,7 +633,6 @@ with tab10:
         fig.update_xaxes(tickvals=list(range(1,13)),
                          ticktext=["Jan","Fev","Mar","Avr","Mai","Juin","Juil","Aou","Sep","Oct","Nov","Dec"])
         st.plotly_chart(fig, use_container_width=True)
-        st.caption("Taux stable toute l'annee — probleme structurel permanent, pas une panne ponctuelle.")
 
     col3, col4 = st.columns(2)
     with col3:
@@ -639,27 +644,23 @@ with tab10:
                                           "Date manquante": "yellow", "CA manquant": "red",
                                           "Produit + Date manquants": "darkred"})
         st.plotly_chart(fig, use_container_width=True)
-        st.caption("90.5% des transactions sont completes. Seulement 0.4% ont un CA manquant.")
 
     with col4:
         st.markdown("### Actions prioritaires")
         st.markdown("""
-        1. Rendre `payment_method` et `location` obligatoires a la caisse
+        1. Rendre location et payment_method obligatoires a la caisse
         2. Horodatage automatique des transactions
         3. Alerte si une caisse depasse 5% d'erreurs sur une journee
         4. Verification automatique : total = quantity x price_per_unit
 
         ### Impact si corrige
         - +26% de donnees recuperees
-        - Analyses par lieu et paiement completes a 100%
         - 35 337£ de CA attribuable a un lieu
         - 27 775£ de CA attribuable a un mode de paiement
         """)
 
-    # Donnees brutes
     st.markdown("---")
     st.subheader("Donnees brutes filtrees")
-    st.write(f"{len(df_f):,} lignes affichees")
     st.dataframe(df_f, use_container_width=True)
     csv = df_f.to_csv(index=False).encode("utf-8")
     st.download_button(label="Telecharger les donnees filtrees", data=csv,
