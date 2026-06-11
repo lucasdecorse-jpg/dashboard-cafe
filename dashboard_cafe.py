@@ -646,3 +646,4 @@ with tabs[8]:
     st.dataframe(df_f, use_container_width=True)
     st.download_button("Telecharger CSV", df_f.to_csv(index=False).encode("utf-8"),
                        "cafe_filtree.csv", "text/csv")
+    
