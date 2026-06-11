@@ -485,9 +485,9 @@ with tabs[5]:
 with tabs[6]:
     st.subheader("Comparateur de produits")
     plist = sorted(df_f["item"].dropna().unique())
-    ca,cb = st.columns(2)
-    p1 = ca.selectbox("Produit A", plist, index=0)
-    p2 = cb.selectbox("Produit B", plist, index=1)
+    col_a, col_b = st.columns(2)
+    p1 = col_a.selectbox("Produit A", plist, index=0)
+    p2 = col_b.selectbox("Produit B", plist, index=1)
 
     if p1 != p2:
         def stats(p):
