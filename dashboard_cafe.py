@@ -102,8 +102,8 @@ c2.metric("CA Estime",     f"{ca_est:,.0f} £", delta=f"+{n_manq*pm:.0f}£ estim
 c3.metric("Panier moyen",  f"{pm:.2f} £")
 c4.metric("Transactions",  f"{n_tx:,}")
 c5.metric("Produit star",  top_p)
-c6.metric("Info manquante",f"{(ca_nr_lieu/ca*100):.0f}% lieu · {(ca_nr_paie/ca*100):.0f}% paie",
-          delta="donnees incompletes", delta_color="inverse")
+c6.metric("CA non attribue", f"{(ca_nr_lieu + ca_nr_paie + ca_nr_item):,.0f} £",
+          delta=f"{(ca_nr_lieu + ca_nr_paie + ca_nr_item)/ca*100:.0f}% info manquante", delta_color="inverse")
 
 st.markdown("---")
 
