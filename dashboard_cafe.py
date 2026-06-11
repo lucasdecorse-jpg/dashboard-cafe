@@ -5,11 +5,25 @@ import plotly.express as px
 import plotly.graph_objects as go
 from plotly.subplots import make_subplots
 
-st.set_page_config(page_title="Cafe Dashboard 2023", page_icon="☕", layout="wide")
+st.set_page_config(page_title="Cafe Analytics 2023", page_icon="☕", layout="wide")
 
 st.markdown("""
 <style>
-section[data-testid="stSidebar"] { background: #111827; }
+section[data-testid="stSidebar"] { background: #0f172a; }
+section[data-testid="stSidebar"] * { color: #e2e8f0 !important; }
+.kpi-box {
+    background: #1e293b;
+    border-radius: 10px;
+    padding: 14px 18px;
+    border-left: 3px solid #7c3aed;
+    height: 100%;
+}
+.kpi-label { font-size: 11px; color: #94a3b8; text-transform: uppercase; letter-spacing: 1px; margin-bottom: 4px; }
+.kpi-value { font-size: 26px; font-weight: 800; color: #f1f5f9; }
+.kpi-delta { font-size: 12px; margin-top: 4px; }
+.kpi-delta-pos { color: #10b981; }
+.kpi-delta-neg { color: #f87171; }
+.section-title { font-size: 20px; font-weight: 700; color: #f1f5f9; margin: 16px 0 4px 0; border-bottom: 1px solid #334155; padding-bottom: 6px; }
 </style>
 """, unsafe_allow_html=True)
 
@@ -61,13 +75,27 @@ with st.sidebar:
     ])
     st.markdown("---")
     st.markdown("## Filtres")
+
+    st.markdown("**Produits**")
     produits_dispo = sorted(df["item"].dropna().unique())
-    produits_choix = st.multiselect("Produit", produits_dispo, default=produits_dispo)
-    lieux_dispo    = [l for l in df["location"].unique() if l != "Non renseigne"]
-    lieux_choix    = st.multiselect("Lieu", lieux_dispo, default=lieux_dispo)
-    paie_dispo     = [p for p in df["payment_method"].unique() if p != "Non renseigne"]
-    paie_choix     = st.multiselect("Paiement", paie_dispo, default=paie_dispo)
-    mois_range     = st.slider("Periode (mois)", 1, 12, (1, 12))
+    produits_choix = [p for p in produits_dispo if st.checkbox(p, value=True, key=f"prod_{p}")]
+    if not produits_choix:
+        produits_choix = produits_dispo
+
+    st.markdown("**Lieu**")
+    lieux_dispo = [l for l in df["location"].unique() if l != "Non renseigne"]
+    lieux_choix = [l for l in lieux_dispo if st.checkbox(l, value=True, key=f"lieu_{l}")]
+    if not lieux_choix:
+        lieux_choix = lieux_dispo
+
+    st.markdown("**Mode de paiement**")
+    paie_dispo = [p for p in df["payment_method"].unique() if p != "Non renseigne"]
+    paie_choix = [p for p in paie_dispo if st.checkbox(p, value=True, key=f"paie_{p}")]
+    if not paie_choix:
+        paie_choix = paie_dispo
+
+    st.markdown("**Periode**")
+    mois_range = st.slider("Mois", 1, 12, (1, 12))
     st.markdown("---")
     st.caption("Cafe 2023 — 10 000 transactions")
 
@@ -90,28 +118,45 @@ ca_nr_paie = df_f[df_f["payment_method"] == "Non renseigne"]["total_spent"].sum(
 ca_nr_item = df_f[df_f["item"].isna()]["total_spent"].sum()
 
 # ── HEADER ───────────────────────────────────────────────────────────────────
-st.title("☕ Dashboard Ventes — Cafe 2023")
-st.caption(f"{len(df_f):,} transactions filtrees sur {len(df):,}")
+st.title("☕ Cafe Analytics — Vue dirigeant 2023")
+st.markdown("Analyse complete des ventes sur 10 000 transactions — nettoyage, reconstruction et exploration des donnees.")
 st.markdown("---")
 
-kc1,kc2,kc3,kc4,kc5,kc6 = st.columns(6)
-kc1.metric("CA Reel",        f"{ca_total:,.0f} £")
-kc2.metric("CA Estime",      f"{ca_est:,.0f} £", delta=f"+{n_manq*pm_total:.0f}£ estimes")
-kc3.metric("Panier moyen",   f"{pm_total:.2f} £")
-kc4.metric("Transactions",   f"{n_tx:,}")
-kc5.metric("Produit star",   top_p)
-kc6.metric("CA non attribue",f"{(ca_nr_lieu+ca_nr_paie+ca_nr_item):,.0f} £",
-           delta=f"{(ca_nr_lieu+ca_nr_paie+ca_nr_item)/ca_total*100:.0f}% info manquante",
-           delta_color="inverse")
+# KPI avec HTML custom
+kc = st.columns(6)
+kpis = [
+    ("CA Reel",        f"{ca_total:,.0f} £",    None,                               None),
+    ("CA Estime",      f"{ca_est:,.0f} £",       f"+{n_manq*pm_total:.0f}£ estimes", "pos"),
+    ("Panier moyen",   f"{pm_total:.2f} £",      None,                               None),
+    ("Transactions",   f"{n_tx:,}",              None,                               None),
+    ("Produit star",   top_p,                    "1er en CA et panier moyen",         "pos"),
+    ("Info manquante", f"{(ca_nr_lieu+ca_nr_paie+ca_nr_item):,.0f} £",
+                       f"{(ca_nr_lieu+ca_nr_paie+ca_nr_item)/ca_total*100:.0f}% sans contexte",
+                       "neg"),
+]
+for i, (label, value, delta, dtype) in enumerate(kpis):
+    delta_html = ""
+    if delta:
+        cls = "kpi-delta-pos" if dtype == "pos" else "kpi-delta-neg"
+        delta_html = f'<div class="kpi-delta {cls}">{delta}</div>'
+    kc[i].markdown(f"""
+    <div class="kpi-box">
+        <div class="kpi-label">{label}</div>
+        <div class="kpi-value">{value}</div>
+        {delta_html}
+    </div>
+    """, unsafe_allow_html=True)
+
+st.markdown("<br>", unsafe_allow_html=True)
 st.markdown("---")
 
 # ══════════════════════════════════════════════════════════════════════════════
 # PAGE 1 — PRODUITS
 # ══════════════════════════════════════════════════════════════════════════════
 if page == "📦 Produits":
-    st.subheader("Analyse par produit")
+    st.markdown('<div class="section-title">Analyse par produit</div>', unsafe_allow_html=True)
     if ca_nr_item > 0:
-        st.warning(f"CA non attribue a un produit : {ca_nr_item:,.0f} £ ({ca_nr_item/ca_total*100:.1f}% du CA)")
+        st.caption(f"ℹ️ {ca_nr_item:,.0f}£ de CA non attribue a un produit ({ca_nr_item/ca_total*100:.1f}%) — produit inconnu mais vente confirmee.")
 
     recap = df_f.dropna(subset=["item"]).groupby("item").agg(
         CA=("total_spent","sum"), Ventes=("total_spent","count"),
@@ -122,23 +167,26 @@ if page == "📦 Produits":
     with col1:
         fig = px.scatter(recap, x="Panier", y="CA", size="Qte", color="item",
                          text="item", size_max=60,
-                         title="CA vs Panier moyen (taille = volume vendu)",
+                         title="CA vs Panier moyen — taille = volume vendu",
                          labels={"Panier":"Panier moyen (£)","CA":"CA total (£)","item":"Produit"},
                          color_discrete_sequence=PALETTE)
         fig.update_traces(textposition="top center")
-        fig.update_layout(showlegend=False, plot_bgcolor="rgba(0,0,0,0)")
+        fig.update_layout(showlegend=False, plot_bgcolor="rgba(0,0,0,0)",
+                          paper_bgcolor="rgba(0,0,0,0)")
         st.plotly_chart(fig, use_container_width=True)
-        st.caption("Salad : fort CA ET fort panier — le produit ideal. Coffee : fort volume mais faible panier.")
+        st.caption("Salad : fort CA ET fort panier — le produit ideal. Coffee : fort volume mais faible panier — opportunite d'upsell.")
 
     with col2:
         fig = px.treemap(recap, path=["item"], values="CA", color="Panier",
                          color_continuous_scale="RdYlGn",
-                         title="Treemap CA (couleur = panier moyen)",
+                         title="Treemap CA — couleur = panier moyen",
                          labels={"CA":"CA (£)","Panier":"Panier moyen"})
         fig.update_traces(textinfo="label+value+percent root")
+        fig.update_layout(paper_bgcolor="rgba(0,0,0,0)")
         st.plotly_chart(fig, use_container_width=True)
-        st.caption("Plus le carre est grand et vert, plus le produit est strategique.")
+        st.caption("Plus le carre est grand et vert, plus le produit est strategique en CA et en valeur.")
 
+    st.markdown("---")
     col3, col4 = st.columns(2)
     with col3:
         recap_sort = recap.sort_values("CA", ascending=False)
@@ -147,31 +195,38 @@ if page == "📦 Produits":
             textinfo="value+percent total",
             marker=dict(color=PALETTE[:len(recap_sort)])
         ))
-        fig.update_layout(title="Funnel CA par produit")
+        fig.update_layout(title="Funnel CA par produit",
+                          paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)")
         st.plotly_chart(fig, use_container_width=True)
-        st.caption("Salad seule represente 21% du CA total.")
+        st.caption("Salad seule represente 21% du CA total — 3 produits font plus de 50%.")
 
     with col4:
         fig = make_subplots(specs=[[{"secondary_y": True}]])
         fig.add_trace(go.Bar(x=recap_sort["item"], y=recap_sort["CA"],
-                             name="CA total", marker_color=PALETTE[0]), secondary_y=False)
+                             name="CA total", marker_color=PALETTE[0], opacity=0.85),
+                      secondary_y=False)
         fig.add_trace(go.Scatter(x=recap_sort["item"], y=recap_sort["Panier"],
                                  name="Panier moyen", mode="lines+markers",
                                  marker=dict(size=10, color=PALETTE[4]),
-                                 line=dict(width=3, color=PALETTE[4])), secondary_y=True)
-        fig.update_layout(title="CA total + Panier moyen", plot_bgcolor="rgba(0,0,0,0)")
+                                 line=dict(width=3, color=PALETTE[4])),
+                      secondary_y=True)
+        fig.update_layout(title="CA total + Panier moyen superpose",
+                          plot_bgcolor="rgba(0,0,0,0)", paper_bgcolor="rgba(0,0,0,0)")
         fig.update_yaxes(title_text="CA (£)", secondary_y=False)
         fig.update_yaxes(title_text="Panier moyen (£)", secondary_y=True)
         st.plotly_chart(fig, use_container_width=True)
-        st.caption("Le paradoxe Coffee : 1er en ventes, 6eme en CA.")
+        st.caption("Le paradoxe Coffee : 1er en ventes, 6eme en CA — son prix bas plombe le CA malgre le volume.")
 
+    st.markdown("---")
+    st.markdown("**Tableau recapitulatif complet**")
     st.dataframe(recap.sort_values("CA", ascending=False), use_container_width=True)
 
 # ══════════════════════════════════════════════════════════════════════════════
 # PAGE 2 — TEMPS
 # ══════════════════════════════════════════════════════════════════════════════
 elif page == "📅 Temps":
-    st.subheader("Analyse temporelle")
+    st.markdown('<div class="section-title">Analyse temporelle</div>', unsafe_allow_html=True)
+    st.caption("Le cafe est ouvert 365j/365 avec 26 transactions/jour en moyenne — aucune interruption detectee.")
 
     ca_mois = df_f.groupby("mois")["total_spent"].sum().reset_index()
     ca_mois.columns = ["Mois","CA"]
@@ -189,15 +244,14 @@ elif page == "📅 Temps":
         fig.add_trace(go.Scatter(x=ca_mois["Mois"], y=ca_mois["Tendance"],
                                   mode="lines", name=f"Tendance +{coef[0]:.0f}£/mois",
                                   line=dict(color="#ef4444", dash="dash", width=2)))
-        fig.update_layout(title="Evolution CA mensuel + tendance",
+        fig.update_layout(title="Evolution CA mensuel + tendance lineaire",
                           xaxis=dict(tickvals=list(range(1,13)), ticktext=MOIS_FR),
-                          plot_bgcolor="rgba(0,0,0,0)")
+                          plot_bgcolor="rgba(0,0,0,0)", paper_bgcolor="rgba(0,0,0,0)")
         st.plotly_chart(fig, use_container_width=True)
-        st.caption(f"Croissance de +{coef[0]:.0f}£/mois — stable mais peu dynamique (+0.7% sur l'annee).")
+        st.caption(f"+{coef[0]:.0f}£/mois — croissance de 0.7% sur l'annee. Stable mais peu dynamique.")
 
     with col2:
-        df_dates = df_f.dropna(subset=["transaction_date"])
-        df_dates = df_dates.copy()
+        df_dates = df_f.dropna(subset=["transaction_date"]).copy()
         df_dates["jour_num"] = df_dates["transaction_date"].dt.dayofweek
         heat = df_dates.groupby(["mois","jour_num"])["total_spent"].sum().reset_index()
         heat_pivot = heat.pivot(index="jour_num", columns="mois", values="total_spent").fillna(0)
@@ -206,10 +260,11 @@ elif page == "📅 Temps":
                         x=MOIS_FR, y=JOURS_FR,
                         color_continuous_scale="Purples",
                         title="Heatmap CA : Jour x Mois")
-        fig.update_layout(plot_bgcolor="rgba(0,0,0,0)")
+        fig.update_layout(plot_bgcolor="rgba(0,0,0,0)", paper_bgcolor="rgba(0,0,0,0)")
         st.plotly_chart(fig, use_container_width=True)
-        st.caption("Aucune zone rouge dominante — regularite 7j/7 et 12 mois/12 confirmee.")
+        st.caption("Intensite homogene — regularite absolue 7j/7 et 12 mois/12 confirmee.")
 
+    st.markdown("---")
     col3, col4 = st.columns(2)
     with col3:
         df_jour = df_f.dropna(subset=["jour_semaine","total_spent"]).copy()
@@ -217,12 +272,13 @@ elif page == "📅 Temps":
         fig = px.violin(df_jour, x="Jour", y="total_spent", color="Jour",
                         box=True, points=False,
                         category_orders={"Jour": JOURS_FR},
-                        title="Distribution du CA par jour",
+                        title="Distribution du CA par jour de la semaine",
                         labels={"total_spent":"CA (£)"},
                         color_discrete_sequence=PALETTE)
-        fig.update_layout(showlegend=False, plot_bgcolor="rgba(0,0,0,0)")
+        fig.update_layout(showlegend=False, plot_bgcolor="rgba(0,0,0,0)",
+                          paper_bgcolor="rgba(0,0,0,0)")
         st.plotly_chart(fig, use_container_width=True)
-        st.caption("Violons identiques — aucun jour ne se distingue des autres.")
+        st.caption("Violons identiques — aucun jour fort, aucun jour faible. Le cafe ne depend pas du weekend.")
 
     with col4:
         fig = make_subplots(specs=[[{"secondary_y": True}]])
@@ -234,19 +290,20 @@ elif page == "📅 Temps":
                                   name="CA", mode="lines+markers",
                                   line=dict(color=PALETTE[0], width=3), marker=dict(size=8)),
                       secondary_y=True)
-        fig.update_layout(title="Volume transactions vs CA par mois",
+        fig.update_layout(title="Volume transactions vs CA mensuel",
                           xaxis=dict(tickvals=list(range(1,13)), ticktext=MOIS_FR),
-                          plot_bgcolor="rgba(0,0,0,0)")
+                          plot_bgcolor="rgba(0,0,0,0)", paper_bgcolor="rgba(0,0,0,0)")
         fig.update_yaxes(title_text="Nb transactions", secondary_y=False)
         fig.update_yaxes(title_text="CA (£)", secondary_y=True)
         st.plotly_chart(fig, use_container_width=True)
-        st.caption("Volume et CA evoluent de concert — pas de mois avec beaucoup de transactions mais peu de CA.")
+        st.caption("Volume et CA evoluent de concert — pas de mois avec beaucoup de clients mais peu de depenses.")
 
 # ══════════════════════════════════════════════════════════════════════════════
 # PAGE 3 — SAISONNALITE
 # ══════════════════════════════════════════════════════════════════════════════
 elif page == "🌡 Saisonnalite":
-    st.subheader("Saisonnalite par produit")
+    st.markdown('<div class="section-title">Saisonnalite par produit</div>', unsafe_allow_html=True)
+    st.caption("Le CA global est stable — mais certains produits ont une vraie saisonnalite cachee derriere la moyenne.")
 
     ca_pm   = df_f.dropna(subset=["item"]).groupby(["mois","item"])["total_spent"].sum().unstack().fillna(0)
     ca_norm = ca_pm.div(ca_pm.mean()).round(2)
@@ -254,25 +311,26 @@ elif page == "🌡 Saisonnalite":
     col1, col2 = st.columns(2)
     with col1:
         fig = px.imshow(ca_norm.T,
-                        labels=dict(x="Mois", y="Produit", color="Index"),
+                        labels=dict(x="Mois", y="Produit", color="Index (1=moy)"),
                         x=MOIS_FR, color_continuous_scale="RdYlGn",
-                        title="Saisonnalite normalisee (1.0 = moyenne)",
+                        title="Saisonnalite normalisee — 1.0 = moyenne annuelle",
                         zmin=0.6, zmax=1.4)
-        fig.update_layout(plot_bgcolor="rgba(0,0,0,0)")
+        fig.update_layout(plot_bgcolor="rgba(0,0,0,0)", paper_bgcolor="rgba(0,0,0,0)")
         st.plotly_chart(fig, use_container_width=True)
         st.caption("Vert = au-dessus de la moyenne. Sandwich fort en hiver, Smoothie fort en ete.")
 
     with col2:
         fig = px.line(ca_pm.reset_index().melt(id_vars="mois", var_name="Produit", value_name="CA"),
                       x="mois", y="CA", color="Produit", markers=True,
-                      title="CA mensuel par produit",
+                      title="CA mensuel par produit — cliquez pour isoler",
                       labels={"CA":"CA (£)","mois":"Mois"},
                       color_discrete_sequence=PALETTE)
         fig.update_xaxes(tickvals=list(range(1,13)), ticktext=MOIS_FR)
-        fig.update_layout(plot_bgcolor="rgba(0,0,0,0)")
+        fig.update_layout(plot_bgcolor="rgba(0,0,0,0)", paper_bgcolor="rgba(0,0,0,0)")
         st.plotly_chart(fig, use_container_width=True)
-        st.caption("Cliquez sur un produit dans la legende pour l'isoler.")
+        st.caption("Cliquez sur un produit dans la legende pour l'isoler et voir sa courbe en detail.")
 
+    st.markdown("---")
     variation = (ca_norm.max() - ca_norm.min()).round(2).reset_index()
     variation.columns = ["Produit","Amplitude"]
     variation = variation.sort_values("Amplitude", ascending=True)
@@ -281,26 +339,27 @@ elif page == "🌡 Saisonnalite":
         marker=dict(color=variation["Amplitude"], colorscale="RdYlGn_r",
                     showscale=True, colorbar=dict(title="Amplitude"))
     ))
-    fig.update_layout(title="Amplitude saisonniere (rouge = plus saisonnier)",
-                      plot_bgcolor="rgba(0,0,0,0)")
+    fig.update_layout(title="Amplitude saisonniere par produit — rouge = plus saisonnier",
+                      plot_bgcolor="rgba(0,0,0,0)", paper_bgcolor="rgba(0,0,0,0)")
     st.plotly_chart(fig, use_container_width=True)
-    st.caption("Sandwich et Smoothie : les plus saisonniers. Cookie : le plus stable.")
+    st.caption("Sandwich et Smoothie : les plus saisonniers (0.40). Cookie : le plus stable toutes saisons (0.27).")
 
 # ══════════════════════════════════════════════════════════════════════════════
 # PAGE 4 — S1 vs S2
 # ══════════════════════════════════════════════════════════════════════════════
 elif page == "📊 S1 vs S2":
-    st.subheader("Comparaison S1 vs S2")
+    st.markdown('<div class="section-title">Comparaison S1 vs S2</div>', unsafe_allow_html=True)
+    st.caption("Le CA global est quasi identique entre les deux semestres — mais les raisons sont differentes.")
 
     s1 = df_f[df_f["mois"] <= 6]
     s2 = df_f[df_f["mois"] > 6]
 
     sc1,sc2,sc3,sc4 = st.columns(4)
-    sc1.metric("CA S1",      f"{s1['total_spent'].sum():,.0f} £")
-    sc2.metric("CA S2",      f"{s2['total_spent'].sum():,.0f} £",
+    sc1.metric("CA S1",     f"{s1['total_spent'].sum():,.0f} £")
+    sc2.metric("CA S2",     f"{s2['total_spent'].sum():,.0f} £",
                delta=f"{s2['total_spent'].sum()-s1['total_spent'].sum():,.0f} £ vs S1")
-    sc3.metric("Panier S1",  f"{s1['total_spent'].mean():.2f} £")
-    sc4.metric("Panier S2",  f"{s2['total_spent'].mean():.2f} £",
+    sc3.metric("Panier S1", f"{s1['total_spent'].mean():.2f} £")
+    sc4.metric("Panier S2", f"{s2['total_spent'].mean():.2f} £",
                delta=f"{s2['total_spent'].mean()-s1['total_spent'].mean():.2f} £ vs S1")
 
     st.markdown("---")
@@ -311,9 +370,9 @@ elif page == "📊 S1 vs S2":
                      title="CA par produit S1 vs S2",
                      labels={"total_spent":"CA (£)","item":"Produit","semestre":"Semestre"},
                      color_discrete_sequence=[PALETTE[0], PALETTE[4]])
-        fig.update_layout(plot_bgcolor="rgba(0,0,0,0)")
+        fig.update_layout(plot_bgcolor="rgba(0,0,0,0)", paper_bgcolor="rgba(0,0,0,0)")
         st.plotly_chart(fig, use_container_width=True)
-        st.caption("Sandwich domine en S1, Salad prend le relais en S2.")
+        st.caption("Sandwich domine en S1 (hiver), Salad prend le relais en S2 (ete).")
 
     with col2:
         panier_s1 = s1.groupby("item")["total_spent"].mean()
@@ -330,17 +389,18 @@ elif page == "📊 S1 vs S2":
         ))
         fig.add_hline(y=0, line_dash="dash", line_color="white", opacity=0.5)
         fig.update_layout(title="Variation panier moyen S1 -> S2 (£)",
-                          plot_bgcolor="rgba(0,0,0,0)")
+                          plot_bgcolor="rgba(0,0,0,0)", paper_bgcolor="rgba(0,0,0,0)")
         st.plotly_chart(fig, use_container_width=True)
-        st.caption("Sandwich -0.54£ en S2, Salad +0.54£ — compensation parfaite.")
+        st.caption("Sandwich -0.54£ en S2, Salad +0.54£ — compensation parfaite entre les deux produits stars.")
 
-    st.info("Opportunite : une version estivale du Sandwich maintiendrait le panier en S2.")
+    st.info("💡 Opportunite : developper une version estivale du Sandwich maintiendrait le panier en S2 sans cannibaliser la Salad.")
 
 # ══════════════════════════════════════════════════════════════════════════════
 # PAGE 5 — LIEU & PAIEMENT
 # ══════════════════════════════════════════════════════════════════════════════
 elif page == "📍 Lieu & Paiement":
-    st.subheader("Lieu & Mode de paiement")
+    st.markdown('<div class="section-title">Lieu & Mode de paiement</div>', unsafe_allow_html=True)
+    st.caption("40% du CA n'a pas de lieu identifie — 31% n'a pas de mode de paiement. Ces analyses portent sur 60% des donnees.")
 
     col1, col2 = st.columns(2)
     with col1:
@@ -349,8 +409,9 @@ elif page == "📍 Lieu & Paiement":
                           color="total_spent", color_continuous_scale="Blues",
                           title="Sunburst CA : Lieu > Produit",
                           labels={"total_spent":"CA (£)"})
+        fig.update_layout(paper_bgcolor="rgba(0,0,0,0)")
         st.plotly_chart(fig, use_container_width=True)
-        st.caption("Cliquez sur un lieu pour zoomer. Non renseigne = 40% du CA sans lieu connu.")
+        st.caption("Cliquez sur un lieu pour zoomer sur ses produits.")
 
     with col2:
         df_sun2_agg = df_f.dropna(subset=["item"]).groupby(["payment_method","item"])["total_spent"].sum().reset_index()
@@ -358,9 +419,11 @@ elif page == "📍 Lieu & Paiement":
                           color="total_spent", color_continuous_scale="Oranges",
                           title="Sunburst CA : Paiement > Produit",
                           labels={"total_spent":"CA (£)"})
+        fig.update_layout(paper_bgcolor="rgba(0,0,0,0)")
         st.plotly_chart(fig, use_container_width=True)
         st.caption("Repartition parfaitement uniforme entre les 3 modes de paiement.")
 
+    st.markdown("---")
     col3, col4 = st.columns(2)
     with col3:
         df_lieu = df_f[df_f["location"] != "Non renseigne"]
@@ -373,9 +436,10 @@ elif page == "📍 Lieu & Paiement":
             increasing={"marker":{"color":PALETTE[0]}},
             totals={"marker":{"color":PALETTE[2]}}
         ))
-        fig.update_layout(title="Waterfall CA par lieu", plot_bgcolor="rgba(0,0,0,0)")
+        fig.update_layout(title="Waterfall CA par lieu",
+                          plot_bgcolor="rgba(0,0,0,0)", paper_bgcolor="rgba(0,0,0,0)")
         st.plotly_chart(fig, use_container_width=True)
-        st.caption("Le Non renseigne pese autant que In-store et Takeaway reunis.")
+        st.caption("Le 'Non renseigne' pese autant que In-store et Takeaway reunis — probleme systeme prioritaire.")
 
     with col4:
         df_paie = df_f[df_f["payment_method"] != "Non renseigne"]
@@ -387,17 +451,18 @@ elif page == "📍 Lieu & Paiement":
                 error_y=dict(type="data", array=[row["std"]], visible=True),
                 name=row["payment_method"], marker_color=PALETTE[i]
             ))
-        fig.update_layout(title="Panier moyen par paiement (avec ecart-type)",
+        fig.update_layout(title="Panier moyen par paiement avec ecart-type",
                           showlegend=False, plot_bgcolor="rgba(0,0,0,0)",
-                          yaxis_title="£ par transaction")
+                          paper_bgcolor="rgba(0,0,0,0)", yaxis_title="£ par transaction")
         st.plotly_chart(fig, use_container_width=True)
-        st.caption("Ecart-type similaire — comportement d'achat identique quel que soit le paiement.")
+        st.caption("Ecart-type identique sur les 3 modes — le moyen de paiement n'influence pas le comportement d'achat.")
 
 # ══════════════════════════════════════════════════════════════════════════════
 # PAGE 6 — ANALYSE LIBRE
 # ══════════════════════════════════════════════════════════════════════════════
 elif page == "🎛 Analyse libre":
-    st.subheader("Construis ton propre graphique")
+    st.markdown('<div class="section-title">Construis ton propre graphique</div>', unsafe_allow_html=True)
+    st.caption("Choisis l'axe, la metrique et le type de visualisation — le graphique se genere en temps reel.")
 
     AXES     = {"Produit":"item","Lieu":"location","Paiement":"payment_method",
                 "Mois":"mois","Jour":"jour_semaine","Trimestre":"trimestre","Semestre":"semestre"}
@@ -442,7 +507,7 @@ elif page == "🎛 Analyse libre":
         fig = go.Figure(go.Funnel(y=dg.sort_values("v",ascending=False)[col_x],
                                    x=dg.sort_values("v",ascending=False)["v"]))
         fig.update_layout(title=f"{metr} par {axe}")
-    fig.update_layout(plot_bgcolor="rgba(0,0,0,0)")
+    fig.update_layout(plot_bgcolor="rgba(0,0,0,0)", paper_bgcolor="rgba(0,0,0,0)")
     st.plotly_chart(fig, use_container_width=True)
     st.dataframe(dg.sort_values("v", ascending=False), use_container_width=True)
 
@@ -450,7 +515,9 @@ elif page == "🎛 Analyse libre":
 # PAGE 7 — COMPARATEUR
 # ══════════════════════════════════════════════════════════════════════════════
 elif page == "⚖ Comparateur":
-    st.subheader("Comparateur de produits")
+    st.markdown('<div class="section-title">Comparateur de produits</div>', unsafe_allow_html=True)
+    st.caption("Selectionne deux produits pour comparer leurs performances sur tous les criteres.")
+
     plist = sorted(df_f["item"].dropna().unique())
     col_a, col_b = st.columns(2)
     p1 = col_a.selectbox("Produit A", plist, index=0)
@@ -470,6 +537,7 @@ elif page == "⚖ Comparateur":
         for i,(k,v1) in enumerate(s1.items()):
             scols[i].metric(k, f"{v1}", delta=f"{round(v1-s2[k],2)} vs {p2}")
 
+        st.markdown("---")
         cats = list(s1.keys())
         mx   = {k: max(s1[k],s2[k]) for k in cats}
         n1   = [s1[k]/mx[k]*100 if mx[k]>0 else 0 for k in cats]
@@ -483,7 +551,8 @@ elif page == "⚖ Comparateur":
             fig.add_trace(go.Scatterpolar(r=n2+[n2[0]], theta=cats+[cats[0]],
                                           fill="toself", name=p2, line_color=PALETTE[4]))
             fig.update_layout(polar=dict(radialaxis=dict(visible=True,range=[0,100])),
-                              title=f"{p1} vs {p2} — Radar")
+                              title=f"Radar {p1} vs {p2}",
+                              paper_bgcolor="rgba(0,0,0,0)")
             st.plotly_chart(fig, use_container_width=True)
 
         with col2:
@@ -494,24 +563,26 @@ elif page == "⚖ Comparateur":
                             labels={"total_spent":"CA (£)","mois":"Mois","item":"Produit"},
                             color_discrete_sequence=[PALETTE[0],PALETTE[4]])
             fig.update_xaxes(tickvals=list(range(1,13)), ticktext=MOIS_FR)
-            fig.update_layout(plot_bgcolor="rgba(0,0,0,0)")
+            fig.update_layout(plot_bgcolor="rgba(0,0,0,0)", paper_bgcolor="rgba(0,0,0,0)")
             st.plotly_chart(fig, use_container_width=True)
 
         df_v = df_f[df_f["item"].isin([p1,p2])].dropna(subset=["total_spent"])
         fig  = px.violin(df_v, x="item", y="total_spent", color="item",
                          box=True, points="outliers",
-                         title="Distribution des transactions",
+                         title="Distribution des montants de transaction",
                          labels={"total_spent":"CA (£)","item":"Produit"},
                          color_discrete_sequence=[PALETTE[0],PALETTE[4]])
-        fig.update_layout(showlegend=False, plot_bgcolor="rgba(0,0,0,0)")
+        fig.update_layout(showlegend=False, plot_bgcolor="rgba(0,0,0,0)",
+                          paper_bgcolor="rgba(0,0,0,0)")
         st.plotly_chart(fig, use_container_width=True)
+        st.caption("Le violin montre la distribution complete des transactions — pas seulement la moyenne.")
 
 # ══════════════════════════════════════════════════════════════════════════════
 # PAGE 8 — EXPLORATION PYGWALKER
 # ══════════════════════════════════════════════════════════════════════════════
 elif page == "🔭 Exploration":
-    st.subheader("Exploration libre — comme Tableau")
-    st.markdown("Glisse-depose n'importe quelle colonne pour construire ton propre graphique.")
+    st.markdown('<div class="section-title">Exploration libre — comme Tableau</div>', unsafe_allow_html=True)
+    st.caption("Glisse-depose n'importe quelle colonne pour construire ton propre graphique interactif.")
     try:
         import pygwalker as pyg
         from pygwalker.api.streamlit import StreamlitRenderer
@@ -524,8 +595,9 @@ elif page == "🔭 Exploration":
 # PAGE 9 — QUALITE DES DONNEES
 # ══════════════════════════════════════════════════════════════════════════════
 elif page == "⚠ Qualite":
-    st.subheader("Qualite des donnees")
-    st.error("Probleme structurel : 25 a 28% d'erreurs systeme par mois sur toute l'annee 2023.")
+    st.markdown('<div class="section-title">Qualite des donnees</div>', unsafe_allow_html=True)
+    st.error("⚠️ Probleme structurel detecte : 25 a 28% d'erreurs systeme par mois en continu sur toute l'annee 2023.")
+    st.caption("Le probleme n'est pas le CA perdu (357£ = 0.4%) mais l'INFORMATION perdue sur 40% des transactions.")
 
     qc1,qc2,qc3,qc4,qc5 = st.columns(5)
     qc1.metric("CA reel",         f"{ca_total:,.0f} £")
@@ -538,16 +610,6 @@ elif page == "⚠ Qualite":
                delta=f"-{ca_nr_paie/ca_total*100:.1f}%", delta_color="inverse")
 
     st.markdown("---")
-    st.markdown("""
-    **Le vrai probleme : pas le CA perdu (357£ = 0.4%) mais l'INFORMATION perdue**
-    - **39.7% du CA** : on ne sait pas si c'etait In-store ou Takeaway
-    - **31.2% du CA** : on ne sait pas comment c'etait paye
-    - **5.8% du CA** : on ne sait pas quel produit a ete vendu
-
-    Toutes les decisions strategiques sont basees sur 60% des donnees seulement.
-    """)
-
-    st.markdown("---")
     col1, col2 = st.columns(2)
     with col1:
         pct_complet = 9048 / 10000 * 100
@@ -555,7 +617,7 @@ elif page == "⚠ Qualite":
             mode="gauge+number+delta",
             value=pct_complet,
             delta={"reference": 100, "valueformat": ".1f"},
-            title={"text": "Taux de completude (%)"},
+            title={"text": "Taux de completude des donnees (%)"},
             gauge={"axis": {"range": [0, 100]},
                    "bar": {"color": "#7c3aed"},
                    "steps": [{"range":[0,50],"color":"#ef4444"},
@@ -563,7 +625,9 @@ elif page == "⚠ Qualite":
                               {"range":[75,100],"color":"#059669"}],
                    "threshold":{"line":{"color":"red","width":4},"value":90}}
         ))
+        fig.update_layout(paper_bgcolor="rgba(0,0,0,0)")
         st.plotly_chart(fig, use_container_width=True)
+        st.caption("90.5% de completude — bon score mais le 9.5% manquant cache 40% d'info contextuelle perdue.")
 
     with col2:
         taux_err = {1:27.5,2:26.5,3:27.2,4:28.0,5:25.7,6:24.8,
@@ -577,9 +641,12 @@ elif page == "⚠ Qualite":
                       annotation_text="Moyenne 26.3%", opacity=0.7)
         fig.update_layout(title="Taux d'erreur par mois (%)",
                           xaxis=dict(tickvals=list(range(1,13)), ticktext=MOIS_FR),
-                          plot_bgcolor="rgba(0,0,0,0)", yaxis_title="%")
+                          plot_bgcolor="rgba(0,0,0,0)", paper_bgcolor="rgba(0,0,0,0)",
+                          yaxis_title="%")
         st.plotly_chart(fig, use_container_width=True)
+        st.caption("Stable toute l'annee — ce n'est pas une panne ponctuelle, c'est un probleme systeme permanent.")
 
+    st.markdown("---")
     col3, col4 = st.columns(2)
     with col3:
         statut = {"Complet":9048,"Produit manquant":453,"Date manquante":435,
@@ -591,25 +658,28 @@ elif page == "⚠ Qualite":
                                           "Produit+Date manquants":"#7c3aed"},
                      hole=0.4)
         fig.update_traces(textinfo="label+percent")
+        fig.update_layout(paper_bgcolor="rgba(0,0,0,0)")
         st.plotly_chart(fig, use_container_width=True)
 
     with col4:
         st.markdown("### Actions prioritaires")
         st.markdown("""
-        1. **Rendre location et payment_method obligatoires**
-           → recuperer 35 337£ de CA attribuable a un lieu
-        2. **Horodatage automatique**
-           → eliminer les 460 dates manquantes
-        3. **Alerte caisse > 5% erreurs/jour**
-           → intervention technique immediate
-        4. **Validation total = qty x prix**
-           → bloquer les transactions incoherentes
+        **1. Rendre location et payment_method obligatoires**
+        → recuperer 35 337£ de CA attribuable a un lieu
 
-        **Impact : +26% de donnees exploitables**
+        **2. Horodatage automatique des transactions**
+        → eliminer les 460 dates manquantes
+
+        **3. Alerte si une caisse depasse 5% d'erreurs/jour**
+        → intervention technique immediate
+
+        **4. Validation automatique : total = qty x prix**
+        → bloquer les transactions incoherentes a la source
         """)
+        st.success("Impact estime : **+26% de donnees exploitables** si tout corrige.")
 
     st.markdown("---")
-    st.subheader("Donnees brutes")
+    st.markdown("**Donnees brutes filtrees**")
     st.dataframe(df_f, use_container_width=True)
-    st.download_button("Telecharger CSV", df_f.to_csv(index=False).encode("utf-8"),
+    st.download_button("⬇️ Telecharger CSV", df_f.to_csv(index=False).encode("utf-8"),
                        "cafe_filtree.csv", "text/csv")
