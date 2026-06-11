@@ -95,7 +95,16 @@ with st.sidebar:
         paie_choix = paie_dispo
 
     st.markdown("<br>**📅 Periode**", unsafe_allow_html=True)
-    mois_range = st.slider("Mois", 1, 12, (1, 12))
+    mois_labels = ["Jan","Fev","Mar","Avr","Mai","Jun","Jul","Aou","Sep","Oct","Nov","Dec"]
+    mois_selec = []
+    cols_mois = st.columns(4)
+    for i, m in enumerate(mois_labels):
+        with cols_mois[i % 4]:
+            if st.checkbox(m, value=True, key=f"mois_{i+1}"):
+                mois_selec.append(i+1)
+    if not mois_selec:
+        mois_selec = list(range(1,13))
+    mois_range = (min(mois_selec), max(mois_selec))
     st.markdown("---")
     st.caption("Cafe 2023 — 10 000 transactions")
 
@@ -104,7 +113,7 @@ df_f = df[
     (df["item"].isin(produits_choix) | df["item"].isna()) &
     (df["location"].isin(lieux_choix + ["Non renseigne"])) &
     (df["payment_method"].isin(paie_choix + ["Non renseigne"])) &
-    (df["mois"].between(mois_range[0], mois_range[1]) | df["mois"].isna())
+    (df["mois"].isin(mois_selec) | df["mois"].isna())
 ]
 
 ca_total   = df_f["total_spent"].sum()
@@ -583,14 +592,74 @@ elif page == "⚖ Comparateur":
 elif page == "🔭 Exploration":
     st.markdown('<div class="section-title">Exploration libre — comme Tableau</div>', unsafe_allow_html=True)
     st.caption("Glisse-depose n'importe quelle colonne pour construire ton propre graphique interactif.")
-    try:
-        import pygwalker as pyg
-        pyg.walk(df_f, env="Streamlit", dark="dark")
-    except ImportError:
-        st.error("Pygwalker non installe — ajoute pygwalker dans requirements.txt")
-    except Exception as e:
-        st.warning("Pygwalker en cours de chargement — rafraichis la page dans 1 minute.")
-        st.caption(f"Detail : {str(e)[:120]}")
+    st.markdown("### Croise n'importe quelles colonnes")
+    exp_cols = ["item","location","payment_method","mois","jour_semaine","trimestre","semestre"]
+    exp_metrics = {"CA total (£)":"sum","Panier moyen (£)":"mean","Nb transactions":"count","Quantite vendue":"sum_qty"}
+    exp_types = ["Barres groupees","Barres empilees","Heatmap","Scatter","Ligne","Camembert","Treemap"]
+
+    ex1,ex2,ex3,ex4,ex5 = st.columns(5)
+    e_x     = ex1.selectbox("Axe X",    exp_cols, key="ex_x")
+    e_color = ex2.selectbox("Couleur",  ["Aucune"] + exp_cols, key="ex_color")
+    e_metr  = ex3.selectbox("Metrique", list(exp_metrics.keys()), key="ex_metr")
+    e_type  = ex4.selectbox("Type",     exp_types, key="ex_type")
+    e_top   = ex5.slider("Top N valeurs", 2, 20, 10, key="ex_top")
+
+    agg = exp_metrics[e_metr]
+    grp = [e_x] if e_color == "Aucune" else [e_x, e_color]
+
+    if agg == "sum_qty":
+        dg2 = df_f.groupby(grp)["quantity"].sum().reset_index()
+        dg2.rename(columns={"quantity":"v"}, inplace=True)
+    elif agg == "sum":
+        dg2 = df_f.groupby(grp)["total_spent"].sum().reset_index()
+        dg2.rename(columns={"total_spent":"v"}, inplace=True)
+    elif agg == "mean":
+        dg2 = df_f.groupby(grp)["total_spent"].mean().reset_index()
+        dg2.rename(columns={"total_spent":"v"}, inplace=True)
+    else:
+        dg2 = df_f.groupby(grp)["total_spent"].count().reset_index()
+        dg2.rename(columns={"total_spent":"v"}, inplace=True)
+
+    dg2["v"] = dg2["v"].round(2)
+    top_vals = dg2.groupby(e_x)["v"].sum().nlargest(e_top).index
+    dg2 = dg2[dg2[e_x].isin(top_vals)]
+
+    color_col = e_color if e_color != "Aucune" else None
+    kw2 = dict(labels={"v":e_metr, e_x:e_x}, color_discrete_sequence=PALETTE)
+
+    if e_type == "Barres groupees":
+        fig = px.bar(dg2, x=e_x, y="v", color=color_col, barmode="group",
+                     title=f"{e_metr} par {e_x}", **kw2)
+    elif e_type == "Barres empilees":
+        fig = px.bar(dg2, x=e_x, y="v", color=color_col, barmode="stack",
+                     title=f"{e_metr} par {e_x}", **kw2)
+    elif e_type == "Heatmap" and color_col:
+        pivot = dg2.pivot_table(index=color_col, columns=e_x, values="v", aggfunc="sum").fillna(0)
+        fig = px.imshow(pivot, color_continuous_scale="Blues",
+                        title=f"Heatmap {e_metr} : {color_col} x {e_x}")
+    elif e_type == "Scatter":
+        fig = px.scatter(dg2, x=e_x, y="v", color=color_col, size="v",
+                         title=f"{e_metr} par {e_x}", **kw2)
+    elif e_type == "Ligne":
+        fig = px.line(dg2, x=e_x, y="v", color=color_col, markers=True,
+                      title=f"{e_metr} par {e_x}", **kw2)
+    elif e_type == "Camembert":
+        fig = px.pie(dg2, values="v", names=e_x,
+                     title=f"{e_metr} par {e_x}", color_discrete_sequence=PALETTE)
+    elif e_type == "Treemap":
+        path = [e_x] if not color_col else [color_col, e_x]
+        fig = px.treemap(dg2, path=path, values="v",
+                         title=f"{e_metr} par {e_x}", color_discrete_sequence=PALETTE)
+    else:
+        fig = px.bar(dg2, x=e_x, y="v", color=color_col,
+                     title=f"{e_metr} par {e_x}", **kw2)
+
+    fig.update_layout(plot_bgcolor="rgba(0,0,0,0)", paper_bgcolor="rgba(0,0,0,0)")
+    st.plotly_chart(fig, use_container_width=True)
+
+    st.markdown("---")
+    st.markdown("**Donnees brutes du graphique**")
+    st.dataframe(dg2.sort_values("v", ascending=False), use_container_width=True)
 
 # ══════════════════════════════════════════════════════════════════════════════
 # PAGE 9 — QUALITE DES DONNEES
