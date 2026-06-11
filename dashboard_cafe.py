@@ -390,7 +390,7 @@ with tabs[4]:
         ca_lieu = df_lieu.groupby("location")["total_spent"].sum().reset_index()
         fig = go.Figure(go.Waterfall(
             x=ca_lieu["location"].tolist() + ["Non renseigne","Total"],
-            y=ca_lieu["total_spent"].tolist() + [ca_sans_lieu_f, 0],
+            y=ca_lieu["total_spent"].tolist() + [ca_nr_lieu, 0],
             measure=["relative"] * len(ca_lieu) + ["relative","total"],
             connector={"line":{"color":"rgb(63,63,63)"}},
             increasing={"marker":{"color":PALETTE[0]}},
