@@ -76,25 +76,25 @@ with st.sidebar:
     st.markdown("---")
     st.markdown("## Filtres")
 
-    st.markdown("**Produits**")
+    st.markdown("<br>**🛒 Produits**", unsafe_allow_html=True)
     produits_dispo = sorted(df["item"].dropna().unique())
     produits_choix = [p for p in produits_dispo if st.checkbox(p, value=True, key=f"prod_{p}")]
     if not produits_choix:
         produits_choix = produits_dispo
 
-    st.markdown("**Lieu**")
+    st.markdown("<br>**📍 Lieu**", unsafe_allow_html=True)
     lieux_dispo = [l for l in df["location"].unique() if l != "Non renseigne"]
     lieux_choix = [l for l in lieux_dispo if st.checkbox(l, value=True, key=f"lieu_{l}")]
     if not lieux_choix:
         lieux_choix = lieux_dispo
 
-    st.markdown("**Mode de paiement**")
+    st.markdown("<br>**💳 Mode de paiement**", unsafe_allow_html=True)
     paie_dispo = [p for p in df["payment_method"].unique() if p != "Non renseigne"]
     paie_choix = [p for p in paie_dispo if st.checkbox(p, value=True, key=f"paie_{p}")]
     if not paie_choix:
         paie_choix = paie_dispo
 
-    st.markdown("**Periode**")
+    st.markdown("<br>**📅 Periode**", unsafe_allow_html=True)
     mois_range = st.slider("Mois", 1, 12, (1, 12))
     st.markdown("---")
     st.caption("Cafe 2023 — 10 000 transactions")
@@ -585,11 +585,12 @@ elif page == "🔭 Exploration":
     st.caption("Glisse-depose n'importe quelle colonne pour construire ton propre graphique interactif.")
     try:
         import pygwalker as pyg
-        from pygwalker.api.streamlit import StreamlitRenderer
-        renderer = StreamlitRenderer(df_f, spec="./gw_config.json", spec_io_mode="rw")
-        renderer.explorer()
+        pyg.walk(df_f, env="Streamlit", dark="dark")
     except ImportError:
-        st.error("Pygwalker non installe — ajoute 'pygwalker' dans requirements.txt")
+        st.error("Pygwalker non installe — ajoute pygwalker dans requirements.txt")
+    except Exception as e:
+        st.warning("Pygwalker en cours de chargement — rafraichis la page dans 1 minute.")
+        st.caption(f"Detail : {str(e)[:120]}")
 
 # ══════════════════════════════════════════════════════════════════════════════
 # PAGE 9 — QUALITE DES DONNEES
